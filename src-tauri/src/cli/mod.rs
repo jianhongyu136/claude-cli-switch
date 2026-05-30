@@ -63,3 +63,48 @@ pub fn find_provider(
         )),
     }
 }
+
+pub fn extract_env_vars(
+    config: &serde_json::Value,
+    app_type: &AppType,
+) -> Vec<(String, String)> {
+    let mut env_vars = Vec::new();
+
+    let Some(obj) = config.as_object() else {
+        return env_vars;
+    };
+
+    if let Some(env) = obj.get("env").and_then(|v| v.as_object()) {
+        for (key, value) in env {
+            if let Some(str_val) = value.as_str() {
+                env_vars.push((key.clone(), str_val.to_string()));
+            }
+        }
+
+        let base_url_key = match app_type {
+            AppType::Claude | AppType::ClaudeDesktop => Some("ANTHROPIC_BASE_URL"),
+            AppType::Gemini => Some("GOOGLE_GEMINI_BASE_URL"),
+            _ => None,
+        };
+
+        if let Some(key) = base_url_key {
+            if let Some(url_str) = env.get(key).and_then(|v| v.as_str()) {
+                env_vars.push((key.to_string(), url_str.to_string()));
+            }
+        }
+    }
+
+    if *app_type == AppType::Codex {
+        if let Some(auth) = obj.get("auth").and_then(|v| v.as_str()) {
+            env_vars.push(("OPENAI_API_KEY".to_string(), auth.to_string()));
+        }
+    }
+
+    if *app_type == AppType::Gemini {
+        if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
+            env_vars.push(("GEMINI_API_KEY".to_string(), api_key.to_string()));
+        }
+    }
+
+    env_vars
+}
