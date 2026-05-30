@@ -2419,49 +2419,7 @@ fn extract_env_vars_from_config(
     config: &serde_json::Value,
     app_type: &AppType,
 ) -> Vec<(String, String)> {
-    let mut env_vars = Vec::new();
-
-    let Some(obj) = config.as_object() else {
-        return env_vars;
-    };
-
-    // 处理 env 字段（Claude/Gemini 通用）
-    if let Some(env) = obj.get("env").and_then(|v| v.as_object()) {
-        for (key, value) in env {
-            if let Some(str_val) = value.as_str() {
-                env_vars.push((key.clone(), str_val.to_string()));
-            }
-        }
-
-        // 处理 base_url: 根据应用类型添加对应的环境变量
-        let base_url_key = match app_type {
-            AppType::Claude | AppType::ClaudeDesktop => Some("ANTHROPIC_BASE_URL"),
-            AppType::Gemini => Some("GOOGLE_GEMINI_BASE_URL"),
-            _ => None,
-        };
-
-        if let Some(key) = base_url_key {
-            if let Some(url_str) = env.get(key).and_then(|v| v.as_str()) {
-                env_vars.push((key.to_string(), url_str.to_string()));
-            }
-        }
-    }
-
-    // Codex 使用 auth 字段转换为 OPENAI_API_KEY
-    if *app_type == AppType::Codex {
-        if let Some(auth) = obj.get("auth").and_then(|v| v.as_str()) {
-            env_vars.push(("OPENAI_API_KEY".to_string(), auth.to_string()));
-        }
-    }
-
-    // Gemini 使用 api_key 字段转换为 GEMINI_API_KEY
-    if *app_type == AppType::Gemini {
-        if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
-            env_vars.push(("GEMINI_API_KEY".to_string(), api_key.to_string()));
-        }
-    }
-
-    env_vars
+    crate::cli::extract_env_vars(config, app_type)
 }
 
 fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
