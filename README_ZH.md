@@ -206,6 +206,19 @@ Claude Code / Codex / Gemini 官方渠道低至 3.8 / 0.2 / 0.9 折，充值更�
 - **Deep Link** (`ccswitch://`) — 通过 URL 一键导入供应商、MCP 服务器、提示词和技能
 - 深色 / 浅色 / 跟随系统主题、开机自启、自动更新、原子写入、自动备份、国际化（中/英/日）
 
+## 命令行用法 (`ccs`)
+
+除 GUI 外，cc-switch 还提供 `ccs` 命令行工具，可使用指定的 provider 启动 Claude CLI——不会修改全局的 `~/.claude/settings.json`。这样你可以同时跑多个使用不同 provider 的 Claude 会话。
+
+```bash
+ccs claude <provider-名称或id>                # 用该 provider 启动 claude
+ccs claude <provider-名称或id> -- --help      # 透传参数给 claude
+```
+
+provider 查找优先匹配 id，其次按名称匹配（不区分大小写）。如果名称有歧义，请改用 provider id。
+
+`ccs` 读取与 GUI 相同的 SQLite 数据库（`~/.cc-switch/cc-switch.db`），GUI 中添加的 provider 立即对 `ccs` 可用。
+
 ## 常见问题
 
 <details>
