@@ -86,3 +86,30 @@ fn find_provider_errors_on_ambiguous_name() {
     let err = find_provider(&db, &AppType::Claude, "Same").unwrap_err();
     assert!(err.to_string().contains("ambiguous") || err.to_string().contains("multiple"));
 }
+
+#[test]
+fn extract_env_vars_pulls_anthropic_block_for_claude() {
+    let cfg = json!({
+        "env": {
+            "ANTHROPIC_AUTH_TOKEN": "sk-test",
+            "ANTHROPIC_BASE_URL": "https://api.example.com"
+        }
+    });
+    let vars = extract_env_vars(&cfg, &AppType::Claude);
+    let map: std::collections::HashMap<_, _> = vars.into_iter().collect();
+    assert_eq!(map.get("ANTHROPIC_AUTH_TOKEN").unwrap(), "sk-test");
+    assert_eq!(map.get("ANTHROPIC_BASE_URL").unwrap(), "https://api.example.com");
+}
+
+#[test]
+fn extract_env_vars_returns_empty_for_null_config() {
+    let vars = extract_env_vars(&serde_json::Value::Null, &AppType::Claude);
+    assert!(vars.is_empty());
+}
+
+#[test]
+fn extract_env_vars_handles_codex_auth_field() {
+    let cfg = json!({ "auth": "sk-codex" });
+    let vars = extract_env_vars(&cfg, &AppType::Codex);
+    assert_eq!(vars, vec![("OPENAI_API_KEY".to_string(), "sk-codex".to_string())]);
+}
