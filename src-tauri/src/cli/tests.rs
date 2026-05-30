@@ -113,3 +113,19 @@ fn extract_env_vars_handles_codex_auth_field() {
     let vars = extract_env_vars(&cfg, &AppType::Codex);
     assert_eq!(vars, vec![("OPENAI_API_KEY".to_string(), "sk-codex".to_string())]);
 }
+
+#[test]
+fn write_settings_file_serializes_env_block() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test_settings.json");
+    let env_vars = vec![
+        ("ANTHROPIC_AUTH_TOKEN".to_string(), "sk-test".to_string()),
+        ("ANTHROPIC_BASE_URL".to_string(), "https://x.example.com".to_string()),
+    ];
+    write_settings_file(&path, &env_vars).unwrap();
+
+    let raw = std::fs::read_to_string(&path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(parsed["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-test");
+    assert_eq!(parsed["env"]["ANTHROPIC_BASE_URL"], "https://x.example.com");
+}

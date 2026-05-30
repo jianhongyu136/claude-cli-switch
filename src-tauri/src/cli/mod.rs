@@ -108,3 +108,19 @@ pub fn extract_env_vars(
 
     env_vars
 }
+
+pub fn write_settings_file(
+    path: &std::path::Path,
+    env_vars: &[(String, String)],
+) -> Result<(), CliError> {
+    let mut env_obj = serde_json::Map::new();
+    for (k, v) in env_vars {
+        env_obj.insert(k.clone(), serde_json::Value::String(v.clone()));
+    }
+    let mut root = serde_json::Map::new();
+    root.insert("env".to_string(), serde_json::Value::Object(env_obj));
+
+    let json = serde_json::to_string_pretty(&serde_json::Value::Object(root))
+        .map_err(|e| CliError::Db(format!("serialize settings failed: {e}")))?;
+    std::fs::write(path, json).map_err(|e| CliError::Db(format!("write settings failed: {e}")))
+}
