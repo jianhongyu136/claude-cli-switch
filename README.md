@@ -206,6 +206,19 @@ Modern AI-powered coding relies on CLI tools like Claude Code, Codex, Gemini CLI
 - **Deep Link** (`ccswitch://`) — Import providers, MCP servers, prompts, and skills via URL
 - Dark / Light / System theme, auto-launch, auto-updater, atomic writes, auto-backups, i18n (zh/en/ja)
 
+## CLI usage (`ccs`)
+
+In addition to the GUI, cc-switch ships a `ccs` command-line tool that launches Claude CLI with a chosen provider's environment — without modifying the global `~/.claude/settings.json`. This lets you run multiple Claude sessions with different providers concurrently.
+
+```bash
+ccs claude <provider-name-or-id>           # launch claude with this provider
+ccs claude <provider-name-or-id> -- --help # forward args to claude
+```
+
+The provider lookup matches by id first, then by name (case-insensitive). If a name is ambiguous, pass the provider id instead.
+
+`ccs` reads the same SQLite database as the cc-switch GUI (`~/.cc-switch/cc-switch.db`), so any provider you add in the GUI is available to `ccs` immediately.
+
 ## FAQ
 
 <details>
