@@ -254,10 +254,10 @@ cargo build --release --bin ccs
 
 ### 路线图
 
-- [ ] `ccs codex <provider>` — 使用指定 provider 启动 Codex CLI
-- [ ] `ccs gemini <provider>` — 使用指定 provider 启动 Gemini CLI
-- [ ] `ccs list` — 列出各应用的所有可用 provider
-- [ ] `ccs status` — 显示各应用当前激活的 provider
+- [x] `ccs codex <provider>` — 使用指定 provider 启动 Codex CLI
+- [x] `ccs gemini <provider>` — 使用指定 provider 启动 Gemini CLI
+- [x] `ccs list` — 列出各应用的所有可用 provider
+- [x] `ccs status` — 显示各应用当前激活的 provider
 - [ ] `ccs switch <app> <provider>` — 切换激活的 provider（等同于 GUI 一键切换）
 - [ ] Shell 补全（bash/zsh/fish/powershell），通过 `ccs completions` 生成
 - [ ] 临时 settings 文件中转发 MCP 服务器配置
