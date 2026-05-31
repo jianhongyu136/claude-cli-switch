@@ -206,18 +206,61 @@ Claude Code / Codex / Gemini 官方渠道低至 3.8 / 0.2 / 0.9 折，充值更�
 - **Deep Link** (`ccswitch://`) — 通过 URL 一键导入供应商、MCP 服务器、提示词和技能
 - 深色 / 浅色 / 跟随系统主题、开机自启、自动更新、原子写入、自动备份、国际化（简中/繁中/英/日）
 
-## 命令行用法 (`ccs`)
+## 命令行工具：`ccs`（Claude CLI Switch）
 
-除 GUI 外，cc-switch 还提供 `ccs` 命令行工具，可使用指定的 provider 启动 Claude CLI——不会修改全局的 `~/.claude/settings.json`。这样你可以同时跑多个使用不同 provider 的 Claude 会话。
+除 GUI 外，cc-switch 还提供独立的命令行工具 **`ccs`**（Claude CLI Switch）。它可以使用指定 provider 的环境启动 AI 编程 CLI 工具——不会修改全局配置文件。这样你可以同时运行多个使用不同 provider 的会话，彼此完全隔离。
+
+### 为什么用 `ccs`？
+
+- **不修改全局配置** — 每次调用使用临时 settings 文件 + 进程级环境变量；`~/.claude/settings.json` 保持不变
+- **多 provider 并发** — 在一个终端用 Provider A 跑 Claude，另一个终端用 Provider B，互不干扰
+- **零额外配置** — 与 GUI 共享同一个 SQLite 数据库（`~/.cc-switch/cc-switch.db`）；GUI 中添加的 provider 立即对 `ccs` 可用
+- **轻量** — 约 3 MB 独立二进制，不依赖 Tauri/WebView
+
+### 用法
 
 ```bash
-ccs claude <provider-名称或id>                # 用该 provider 启动 claude
-ccs claude <provider-名称或id> -- --help      # 透传参数给 claude
+ccs claude <provider-名称或id>               # 用该 provider 启动 claude
+ccs claude <provider-名称或id> -- --help     # 透传参数给 claude
+ccs claude <provider-名称或id> -- -p "你好"  # 透传 prompt 给 claude
+ccs --version                               # 显示版本
+ccs --help                                  # 显示帮助
 ```
 
-provider 查找优先匹配 id，其次按名称匹配（不区分大小写）。如果名称有歧义，请改用 provider id。
+provider 查找优先匹配 **id**，其次按**名称**匹配（不区分大小写）。如果名称有歧义（多个 provider 同名），请改用 provider id。
 
-`ccs` 读取与 GUI 相同的 SQLite 数据库（`~/.cc-switch/cc-switch.db`），GUI 中添加的 provider 立即对 `ccs` 可用。
+### 退出码
+
+| 退出码 | 含义 |
+|--------|------|
+| 0      | 成功（claude 正常退出） |
+| 2      | 数据库或 settings 文件错误 |
+| 3      | Provider 未找到 |
+| 4      | Provider 名称有歧义 |
+| 5      | Provider 没有环境变量配置 |
+| 127    | 无法启动 claude（不在 PATH 中） |
+
+### 安装
+
+`ccs` 二进制文件随 GUI 安装包一起发布在 [Releases](../../releases) 页面。下载对应平台的 `ccs` 并放到 `PATH` 中即可。
+
+也可以从源码构建：
+
+```bash
+cd src-tauri
+cargo build --release --bin ccs
+# 二进制位于：target/release/ccs（Windows 为 ccs.exe）
+```
+
+### 路线图
+
+- [ ] `ccs codex <provider>` — 使用指定 provider 启动 Codex CLI
+- [ ] `ccs gemini <provider>` — 使用指定 provider 启动 Gemini CLI
+- [ ] `ccs list` — 列出各应用的所有可用 provider
+- [ ] `ccs status` — 显示各应用当前激活的 provider
+- [ ] `ccs switch <app> <provider>` — 切换激活的 provider（等同于 GUI 一键切换）
+- [ ] Shell 补全（bash/zsh/fish/powershell），通过 `ccs completions` 生成
+- [ ] 临时 settings 文件中转发 MCP 服务器配置
 
 ## 常见问题
 

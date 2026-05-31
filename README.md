@@ -206,18 +206,61 @@ Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex
 - **Deep Link** (`ccswitch://`) — Import providers, MCP servers, prompts, and skills via URL
 - Dark / Light / System theme, auto-launch, auto-updater, atomic writes, auto-backups, i18n (zh/zh-TW/en/ja)
 
-## CLI usage (`ccs`)
+## CLI: `ccs` (Claude CLI Switch)
 
-In addition to the GUI, cc-switch ships a `ccs` command-line tool that launches Claude CLI with a chosen provider's environment — without modifying the global `~/.claude/settings.json`. This lets you run multiple Claude sessions with different providers concurrently.
+In addition to the GUI, cc-switch ships a standalone CLI binary called **`ccs`** (Claude CLI Switch). It launches AI coding CLI tools with a chosen provider's environment — without modifying global config files. This lets you run multiple sessions with different providers concurrently, each fully isolated.
+
+### Why `ccs`?
+
+- **No global config mutation** — Each invocation uses a temp settings file + process-level env vars; `~/.claude/settings.json` stays untouched
+- **Concurrent multi-provider** — Run Claude with Provider A in one terminal and Provider B in another, simultaneously
+- **Zero extra setup** — Shares the same SQLite database as the GUI (`~/.cc-switch/cc-switch.db`); any provider you add in the GUI is available to `ccs` immediately
+- **Lightweight** — ~3 MB standalone binary, no Tauri/WebView dependency
+
+### Usage
 
 ```bash
-ccs claude <provider-name-or-id>           # launch claude with this provider
-ccs claude <provider-name-or-id> -- --help # forward args to claude
+ccs claude <provider-name-or-id>             # launch claude with this provider
+ccs claude <provider-name-or-id> -- --help   # forward args to claude
+ccs claude <provider-name-or-id> -- -p "hi"  # forward a prompt to claude
+ccs --version                                # show version
+ccs --help                                   # show help
 ```
 
-The provider lookup matches by id first, then by name (case-insensitive). If a name is ambiguous, pass the provider id instead.
+Provider lookup matches by **id** first, then by **name** (case-insensitive). If a name is ambiguous (multiple providers share the same name), pass the provider id instead.
 
-`ccs` reads the same SQLite database as the cc-switch GUI (`~/.cc-switch/cc-switch.db`), so any provider you add in the GUI is available to `ccs` immediately.
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0    | Success (claude exited normally) |
+| 2    | Database or settings file error |
+| 3    | Provider not found |
+| 4    | Ambiguous provider name |
+| 5    | Provider has no env config |
+| 127  | Failed to spawn claude (not on PATH) |
+
+### Installation
+
+The `ccs` binary is included in the [Releases](../../releases) page alongside the GUI installer. Download `ccs` for your platform and place it anywhere on your `PATH`.
+
+You can also build from source:
+
+```bash
+cd src-tauri
+cargo build --release --bin ccs
+# Binary at: target/release/ccs (or ccs.exe on Windows)
+```
+
+### Roadmap
+
+- [ ] `ccs codex <provider>` — Launch Codex CLI with a chosen provider
+- [ ] `ccs gemini <provider>` — Launch Gemini CLI with a chosen provider
+- [ ] `ccs list` — List all available providers for each app
+- [ ] `ccs status` — Show currently active provider per app
+- [ ] `ccs switch <app> <provider>` — Switch the active provider (same as GUI one-click switch)
+- [ ] Shell completions (bash/zsh/fish/powershell) via `ccs completions`
+- [ ] MCP server config forwarding in the temp settings file
 
 ## FAQ
 
