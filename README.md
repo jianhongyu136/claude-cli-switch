@@ -254,10 +254,10 @@ cargo build --release --bin ccs
 
 ### Roadmap
 
-- [ ] `ccs codex <provider>` — Launch Codex CLI with a chosen provider
-- [ ] `ccs gemini <provider>` — Launch Gemini CLI with a chosen provider
-- [ ] `ccs list` — List all available providers for each app
-- [ ] `ccs status` — Show currently active provider per app
+- [x] `ccs codex <provider>` — Launch Codex CLI with a chosen provider
+- [x] `ccs gemini <provider>` — Launch Gemini CLI with a chosen provider
+- [x] `ccs list` — List all available providers for each app
+- [x] `ccs status` — Show currently active provider per app
 - [ ] `ccs switch <app> <provider>` — Switch the active provider (same as GUI one-click switch)
 - [ ] Shell completions (bash/zsh/fish/powershell) via `ccs completions`
 - [ ] MCP server config forwarding in the temp settings file
