@@ -229,6 +229,22 @@ jobs:
         if: runner.os == 'Linux'
         run: pnpm tauri build --bundles appimage,deb,rpm
 
+      - name: Build ccs CLI binary
+        shell: bash
+        run: |
+          cd src-tauri
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            cargo build --release --bin ccs --target aarch64-apple-darwin
+            cargo build --release --bin ccs --target x86_64-apple-darwin
+            lipo -create \
+              target/aarch64-apple-darwin/release/ccs \
+              target/x86_64-apple-darwin/release/ccs \
+              -output target/release/ccs
+            chmod +x target/release/ccs
+          else
+            cargo build --release --bin ccs
+          fi
+
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'
         shell: bash
@@ -303,6 +319,12 @@ jobs:
 
           rm -rf "$DMG_STAGE_DIR"
           echo "✅ Styled DMG created: $NEW_DMG"
+
+          # 4) ccs CLI binary (universal)
+          if [ -f "src-tauri/target/release/ccs" ]; then
+            cp "src-tauri/target/release/ccs" "release-assets/ccs-${VERSION}-macOS-universal"
+            echo "ccs CLI binary copied: ccs-${VERSION}-macOS-universal"
+          fi
 
       - name: Notarize macOS DMG
         if: runner.os == 'macOS'
@@ -441,6 +463,12 @@ jobs:
           } else {
             Write-Warning 'Portable exe not found'
           }
+          # ccs CLI binary
+          $ccsPath = 'src-tauri/target/release/ccs.exe'
+          if (Test-Path $ccsPath) {
+            Copy-Item $ccsPath (Join-Path release-assets "ccs-$VERSION-Windows-x86_64.exe")
+            Write-Host "ccs CLI binary copied: ccs-$VERSION-Windows-x86_64.exe"
+          }
 
       - name: Prepare Linux Assets
         if: runner.os == 'Linux'
@@ -475,6 +503,12 @@ jobs:
             echo "RPM package copied: CC-Switch-${VERSION}-Linux-${ARCH}.rpm"
           else
             echo "No .rpm found (optional)"
+          fi
+          # ccs CLI binary
+          CCS_BIN="src-tauri/target/release/ccs"
+          if [ -f "$CCS_BIN" ]; then
+            cp "$CCS_BIN" "release-assets/ccs-${VERSION}-Linux-${ARCH}"
+            echo "ccs CLI binary copied: ccs-${VERSION}-Linux-${ARCH}"
           fi
 
       - name: List prepared assets
