@@ -1,0 +1,126 @@
+name: Release ccs CLI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ccs-release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            artifact: ccs.exe
+            asset_name_suffix: Windows-x86_64.exe
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: ccs
+            asset_name_suffix: Linux-x86_64
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: ccs
+            asset_name_suffix: Linux-arm64
+          - os: macos-14
+            target: universal
+            artifact: ccs
+            asset_name_suffix: macOS-universal
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS targets
+        if: matrix.target == 'universal'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Build ccs (macOS universal)
+        if: matrix.target == 'universal'
+        working-directory: src-tauri
+        run: |
+          cargo build --release --bin ccs --target aarch64-apple-darwin
+          cargo build --release --bin ccs --target x86_64-apple-darwin
+          mkdir -p target/release
+          lipo -create \
+            target/aarch64-apple-darwin/release/ccs \
+            target/x86_64-apple-darwin/release/ccs \
+            -output target/release/ccs
+          chmod +x target/release/ccs
+
+      - name: Build ccs (Linux/Windows)
+        if: matrix.target != 'universal'
+        working-directory: src-tauri
+        run: cargo build --release --bin ccs
+
+      - name: Prepare asset
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ASSET_NAME="ccs-${VERSION}-${{ matrix.asset_name_suffix }}"
+          cp "src-tauri/target/release/${{ matrix.artifact }}" "$ASSET_NAME"
+          echo "ASSET_NAME=$ASSET_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccs-${{ matrix.asset_name_suffix }}
+          path: ${{ env.ASSET_NAME }}
+
+  release:
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ccs-*
+          path: assets
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la assets/
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ccs ${{ github.ref_name }}
+          body: |
+            ## ccs ${{ github.ref_name }}（Claude CLI Switch）
+
+            独立命令行工具，使用指定 provider 启动 Claude/Codex/Gemini CLI，无需修改全局配置。
+
+            ### 功能
+            - `ccs claude <provider>` — 启动 Claude CLI
+            - `ccs codex <provider>` — 启动 Codex CLI
+            - `ccs gemini <provider>` — 启动 Gemini CLI
+            - `ccs list [app]` — 列出所有 provider
+            - `ccs status [app]` — 显示当前激活的 provider
+
+            ### 下载
+            | 平台 | 文件 |
+            |------|------|
+            | Windows | `ccs-${{ github.ref_name }}-Windows-x86_64.exe` |
+            | macOS (Universal) | `ccs-${{ github.ref_name }}-macOS-universal` |
+            | Linux x86_64 | `ccs-${{ github.ref_name }}-Linux-x86_64` |
+            | Linux ARM64 | `ccs-${{ github.ref_name }}-Linux-arm64` |
+
+            下载后放到 PATH 中即可使用。与 CC Switch GUI 共享同一数据库。
+          files: assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
