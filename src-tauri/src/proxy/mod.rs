@@ -34,6 +34,12 @@ pub mod thinking_rectifier;
 pub(crate) mod types;
 pub mod usage;
 
+#[cfg(feature = "gui")]
+pub(crate) type ProxyAppHandle = tauri::AppHandle;
+#[cfg(not(feature = "gui"))]
+#[derive(Clone, Debug)]
+pub(crate) struct ProxyAppHandle;
+
 // 公开导出给外部使用（commands, services等模块需要）
 #[allow(unused_imports)]
 pub use circuit_breaker::{
@@ -45,13 +51,13 @@ pub use error::ProxyError;
 pub use provider_router::ProviderRouter;
 #[allow(unused_imports)]
 pub use response_handler::{NonStreamHandler, ResponseType, StreamHandler};
+pub(crate) use server::temporary_cli_proxy_server;
 #[allow(unused_imports)]
 pub use session::{
     extract_session_id, ClientFormat, ProxySession, SessionIdResult, SessionIdSource,
 };
 #[allow(unused_imports)]
 pub use types::{ProxyConfig, ProxyServerInfo, ProxyStatus};
-pub(crate) use server::temporary_cli_proxy_server;
 
 // 内部模块间共享（供子模块使用）
 // 注意：这个导出用于模块内部，编译器可能警告未使用但实际被子模块使用

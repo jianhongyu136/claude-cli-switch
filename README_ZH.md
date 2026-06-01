@@ -26,7 +26,7 @@
 - **自动协议路由** — Claude / Codex / Gemini 遇到需要协议转换的 provider 时，会使用当前进程专属的临时本地代理
 - **多 provider 并发** — 在一个终端用 Provider A 跑 Claude，另一个终端用 Provider B，互不干扰；临时代理端口由系统自动分配，避免冲突
 - **零额外配置** — 与 CC Switch GUI 共享同一个 SQLite 数据库（`~/.cc-switch/cc-switch.db`）；GUI 中添加的 provider 立即对 `ccs` 可用
-- **轻量** — 约 3 MB 独立二进制，不依赖 Tauri/WebView
+- **轻量** — 带自动代理能力的 Windows 二进制约 4.6 MB；默认 `ccs` 构建不包含 Tauri/WebView 依赖
 
 ## 安装
 
@@ -43,8 +43,15 @@
 
 ```bash
 cd src-tauri
-cargo build --release --bin ccs
-# 二进制位于：target/release/ccs（Windows 为 ccs.exe）
+cargo build --profile release-ccs --bin ccs
+# 二进制位于：target/release-ccs/ccs（Windows 为 ccs.exe）
+```
+
+这个独立 `ccs` 构建使用默认 Cargo feature，并刻意排除 Tauri/WebView 依赖。若要构建完整 CC Switch 桌面应用，请通过 Tauri 命令启用 GUI feature：
+
+```bash
+pnpm tauri dev --features gui
+pnpm tauri build --features gui
 ```
 
 ## 用法
@@ -139,7 +146,7 @@ cargo test --lib cli::proxy::tests
 cargo test --lib proxy::server::tests
 
 # Release 构建
-cargo build --release --bin ccs
+cargo build --profile release-ccs --bin ccs
 ```
 
 ## 致谢

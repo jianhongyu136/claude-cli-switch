@@ -98,7 +98,10 @@ fn extract_env_vars_pulls_anthropic_block_for_claude() {
     let vars = extract_env_vars(&cfg, &AppType::Claude);
     let map: std::collections::HashMap<_, _> = vars.into_iter().collect();
     assert_eq!(map.get("ANTHROPIC_AUTH_TOKEN").unwrap(), "sk-test");
-    assert_eq!(map.get("ANTHROPIC_BASE_URL").unwrap(), "https://api.example.com");
+    assert_eq!(
+        map.get("ANTHROPIC_BASE_URL").unwrap(),
+        "https://api.example.com"
+    );
 }
 
 #[test]
@@ -111,7 +114,10 @@ fn extract_env_vars_returns_empty_for_null_config() {
 fn extract_env_vars_handles_codex_auth_field() {
     let cfg = json!({ "auth": "sk-codex" });
     let vars = extract_env_vars(&cfg, &AppType::Codex);
-    assert_eq!(vars, vec![("OPENAI_API_KEY".to_string(), "sk-codex".to_string())]);
+    assert_eq!(
+        vars,
+        vec![("OPENAI_API_KEY".to_string(), "sk-codex".to_string())]
+    );
 }
 
 #[test]
@@ -120,7 +126,10 @@ fn write_settings_file_serializes_env_block() {
     let path = dir.path().join("test_settings.json");
     let env_vars = vec![
         ("ANTHROPIC_AUTH_TOKEN".to_string(), "sk-test".to_string()),
-        ("ANTHROPIC_BASE_URL".to_string(), "https://x.example.com".to_string()),
+        (
+            "ANTHROPIC_BASE_URL".to_string(),
+            "https://x.example.com".to_string(),
+        ),
     ];
     write_settings_file(&path, &env_vars).unwrap();
 

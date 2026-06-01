@@ -33,11 +33,7 @@ impl fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
-pub fn find_provider(
-    db: &Database,
-    app_type: &AppType,
-    query: &str,
-) -> Result<Provider, CliError> {
+pub fn find_provider(db: &Database, app_type: &AppType, query: &str) -> Result<Provider, CliError> {
     if let Some(p) = db
         .get_provider_by_id(query, app_type.as_str())
         .map_err(|e| CliError::Db(e.to_string()))?
@@ -66,10 +62,7 @@ pub fn find_provider(
     }
 }
 
-pub fn extract_env_vars(
-    config: &serde_json::Value,
-    app_type: &AppType,
-) -> Vec<(String, String)> {
+pub fn extract_env_vars(config: &serde_json::Value, app_type: &AppType) -> Vec<(String, String)> {
     let mut env_vars = Vec::new();
 
     let Some(obj) = config.as_object() else {

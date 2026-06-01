@@ -26,7 +26,7 @@ Since v3.16.1, `ccs` can also automatically start a per-invocation temporary loc
 - **Automatic protocol routing** — Claude / Codex / Gemini launches can use a per-process temporary local proxy when provider protocol conversion is required
 - **Concurrent multi-provider** — Run Claude with Provider A in one terminal and Provider B in another, simultaneously; temporary proxy ports are assigned by the OS to avoid conflicts
 - **Zero extra setup** — Shares the same SQLite database as the CC Switch GUI (`~/.cc-switch/cc-switch.db`); any provider you add in the GUI is available to `ccs` immediately
-- **Lightweight** — ~3 MB standalone binary, no Tauri/WebView dependency
+- **Lightweight** — ~4.6 MB Windows binary with auto proxy support; default `ccs` build excludes Tauri/WebView dependencies
 
 ## Installation
 
@@ -43,8 +43,15 @@ You can also build from source:
 
 ```bash
 cd src-tauri
-cargo build --release --bin ccs
-# Binary at: target/release/ccs (or ccs.exe on Windows)
+cargo build --profile release-ccs --bin ccs
+# Binary at: target/release-ccs/ccs (or ccs.exe on Windows)
+```
+
+This standalone `ccs` build uses the default Cargo feature set and intentionally excludes Tauri/WebView dependencies. To build the full CC Switch desktop app, enable the GUI feature through the Tauri command:
+
+```bash
+pnpm tauri dev --features gui
+pnpm tauri build --features gui
 ```
 
 ## Usage
@@ -139,7 +146,7 @@ cargo test --lib cli::proxy::tests
 cargo test --lib proxy::server::tests
 
 # Release build
-cargo build --release --bin ccs
+cargo build --profile release-ccs --bin ccs
 ```
 
 ## Acknowledgments

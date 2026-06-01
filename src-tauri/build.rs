@@ -1,4 +1,7 @@
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(mobile)");
+
+    #[cfg(feature = "gui")]
     tauri_build::build();
 
     // Windows: Embed Common Controls v6 manifest for test binaries
