@@ -19,16 +19,20 @@ use super::{
         normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
     },
     types::{CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
-    ProxyError,
+    ProxyAppHandle, ProxyError,
 };
+#[cfg(feature = "gui")]
 use crate::commands::{CodexOAuthState, CopilotAuthState};
+#[cfg(feature = "gui")]
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
+#[cfg(feature = "gui")]
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
 use serde_json::Value;
 use std::sync::Arc;
+#[cfg(feature = "gui")]
 use tauri::Manager;
 use tokio::sync::RwLock;
 
@@ -96,7 +100,7 @@ pub struct RequestForwarder {
     /// 故障转移切换管理器
     failover_manager: Arc<FailoverSwitchManager>,
     /// AppHandle，用于发射事件和更新托盘
-    app_handle: Option<tauri::AppHandle>,
+    app_handle: Option<ProxyAppHandle>,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
     current_provider_id_at_start: String,
     /// 代理会话 ID（用于 Gemini Native shadow replay）
@@ -131,7 +135,7 @@ impl RequestForwarder {
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_manager: Arc<FailoverSwitchManager>,
-        app_handle: Option<tauri::AppHandle>,
+        app_handle: Option<ProxyAppHandle>,
         current_provider_id_at_start: String,
         session_id: String,
         session_client_provided: bool,
@@ -1072,6 +1076,7 @@ impl RequestForwarder {
 
         // GitHub Copilot 动态 endpoint 路由
         // 从 CopilotAuthManager 获取缓存的 API endpoint（支持企业版等非默认 endpoint）
+        #[cfg(feature = "gui")]
         if is_copilot && !is_full_url {
             if let Some(app_handle) = &self.app_handle {
                 let copilot_state = app_handle.state::<CopilotAuthState>();
@@ -1219,104 +1224,124 @@ impl RequestForwarder {
         let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(provider) {
             // GitHub Copilot 特殊处理：从 CopilotAuthManager 获取真实 token
             if auth.strategy == AuthStrategy::GitHubCopilot {
-                if let Some(app_handle) = &self.app_handle {
-                    let copilot_state = app_handle.state::<CopilotAuthState>();
-                    let copilot_auth: tokio::sync::RwLockReadGuard<'_, CopilotAuthManager> =
-                        copilot_state.0.read().await;
+                #[cfg(feature = "gui")]
+                {
+                    if let Some(app_handle) = &self.app_handle {
+                        let copilot_state = app_handle.state::<CopilotAuthState>();
+                        let copilot_auth: tokio::sync::RwLockReadGuard<'_, CopilotAuthManager> =
+                            copilot_state.0.read().await;
 
-                    // 从 provider.meta 获取关联的 GitHub 账号 ID（多账号支持）
-                    let account_id = provider
-                        .meta
-                        .as_ref()
-                        .and_then(|m| m.managed_account_id_for("github_copilot"));
+                        // 从 provider.meta 获取关联的 GitHub 账号 ID（多账号支持）
+                        let account_id = provider
+                            .meta
+                            .as_ref()
+                            .and_then(|m| m.managed_account_id_for("github_copilot"));
 
-                    // 根据账号 ID 获取对应 token（向后兼容：无账号 ID 时使用第一个账号）
-                    let token_result = match &account_id {
-                        Some(id) => {
-                            log::debug!("[Copilot] 使用指定账号 {id} 获取 token");
-                            copilot_auth.get_valid_token_for_account(id).await
-                        }
-                        None => {
-                            log::debug!("[Copilot] 使用默认账号获取 token");
-                            copilot_auth.get_valid_token().await
-                        }
-                    };
+                        // 根据账号 ID 获取对应 token（向后兼容：无账号 ID 时使用第一个账号）
+                        let token_result = match &account_id {
+                            Some(id) => {
+                                log::debug!("[Copilot] 使用指定账号 {id} 获取 token");
+                                copilot_auth.get_valid_token_for_account(id).await
+                            }
+                            None => {
+                                log::debug!("[Copilot] 使用默认账号获取 token");
+                                copilot_auth.get_valid_token().await
+                            }
+                        };
 
-                    match token_result {
-                        Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::GitHubCopilot);
-                            log::debug!(
-                                "[Copilot] 成功获取 Copilot token (account={})",
-                                account_id.as_deref().unwrap_or("default")
-                            );
+                        match token_result {
+                            Ok(token) => {
+                                auth = AuthInfo::new(token, AuthStrategy::GitHubCopilot);
+                                log::debug!(
+                                    "[Copilot] 成功获取 Copilot token (account={})",
+                                    account_id.as_deref().unwrap_or("default")
+                                );
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "[Copilot] 获取 Copilot token 失败 (account={}): {e}",
+                                    account_id.as_deref().unwrap_or("default")
+                                );
+                                return Err(ProxyError::AuthError(format!(
+                                    "GitHub Copilot 认证失败: {e}"
+                                )));
+                            }
                         }
-                        Err(e) => {
-                            log::error!(
-                                "[Copilot] 获取 Copilot token 失败 (account={}): {e}",
-                                account_id.as_deref().unwrap_or("default")
-                            );
-                            return Err(ProxyError::AuthError(format!(
-                                "GitHub Copilot 认证失败: {e}"
-                            )));
-                        }
+                    } else {
+                        log::error!("[Copilot] AppHandle 不可用");
+                        return Err(ProxyError::AuthError(
+                            "GitHub Copilot 认证不可用（无 AppHandle）".to_string(),
+                        ));
                     }
-                } else {
-                    log::error!("[Copilot] AppHandle 不可用");
+                }
+
+                #[cfg(not(feature = "gui"))]
+                {
                     return Err(ProxyError::AuthError(
-                        "GitHub Copilot 认证不可用（无 AppHandle）".to_string(),
+                        "GitHub Copilot managed-account auth is unavailable in standalone ccs because it requires GUI OAuth state".to_string(),
                     ));
                 }
             }
 
             // Codex OAuth 特殊处理：从 CodexOAuthManager 获取真实 access_token
             if auth.strategy == AuthStrategy::CodexOAuth {
-                if let Some(app_handle) = &self.app_handle {
-                    let codex_state = app_handle.state::<CodexOAuthState>();
-                    let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
-                        codex_state.0.read().await;
+                #[cfg(feature = "gui")]
+                {
+                    if let Some(app_handle) = &self.app_handle {
+                        let codex_state = app_handle.state::<CodexOAuthState>();
+                        let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
+                            codex_state.0.read().await;
 
-                    // 从 provider.meta 获取关联的 ChatGPT 账号 ID
-                    let account_id = provider
-                        .meta
-                        .as_ref()
-                        .and_then(|m| m.managed_account_id_for("codex_oauth"));
+                        // 从 provider.meta 获取关联的 ChatGPT 账号 ID
+                        let account_id = provider
+                            .meta
+                            .as_ref()
+                            .and_then(|m| m.managed_account_id_for("codex_oauth"));
 
-                    let token_result = match &account_id {
-                        Some(id) => {
-                            log::debug!("[CodexOAuth] 使用指定账号 {id} 获取 token");
-                            codex_auth.get_valid_token_for_account(id).await
-                        }
-                        None => {
-                            log::debug!("[CodexOAuth] 使用默认账号获取 token");
-                            codex_auth.get_valid_token().await
-                        }
-                    };
+                        let token_result = match &account_id {
+                            Some(id) => {
+                                log::debug!("[CodexOAuth] 使用指定账号 {id} 获取 token");
+                                codex_auth.get_valid_token_for_account(id).await
+                            }
+                            None => {
+                                log::debug!("[CodexOAuth] 使用默认账号获取 token");
+                                codex_auth.get_valid_token().await
+                            }
+                        };
 
-                    match token_result {
-                        Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::CodexOAuth);
-                            should_send_codex_oauth_session_headers = true;
-                            // 解析使用的 account_id（用于注入 ChatGPT-Account-Id header）
-                            codex_oauth_account_id = match account_id {
-                                Some(id) => Some(id),
-                                None => codex_auth.default_account_id().await,
-                            };
-                            log::debug!(
-                                "[CodexOAuth] 成功获取 access_token (account={})",
-                                codex_oauth_account_id.as_deref().unwrap_or("default")
-                            );
+                        match token_result {
+                            Ok(token) => {
+                                auth = AuthInfo::new(token, AuthStrategy::CodexOAuth);
+                                should_send_codex_oauth_session_headers = true;
+                                // 解析使用的 account_id（用于注入 ChatGPT-Account-Id header）
+                                codex_oauth_account_id = match account_id {
+                                    Some(id) => Some(id),
+                                    None => codex_auth.default_account_id().await,
+                                };
+                                log::debug!(
+                                    "[CodexOAuth] 成功获取 access_token (account={})",
+                                    codex_oauth_account_id.as_deref().unwrap_or("default")
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("[CodexOAuth] 获取 access_token 失败: {e}");
+                                return Err(ProxyError::AuthError(format!(
+                                    "Codex OAuth 认证失败: {e}"
+                                )));
+                            }
                         }
-                        Err(e) => {
-                            log::error!("[CodexOAuth] 获取 access_token 失败: {e}");
-                            return Err(ProxyError::AuthError(format!(
-                                "Codex OAuth 认证失败: {e}"
-                            )));
-                        }
+                    } else {
+                        log::error!("[CodexOAuth] AppHandle 不可用");
+                        return Err(ProxyError::AuthError(
+                            "Codex OAuth 认证不可用（无 AppHandle）".to_string(),
+                        ));
                     }
-                } else {
-                    log::error!("[CodexOAuth] AppHandle 不可用");
+                }
+
+                #[cfg(not(feature = "gui"))]
+                {
                     return Err(ProxyError::AuthError(
-                        "Codex OAuth 认证不可用（无 AppHandle）".to_string(),
+                        "Codex OAuth managed-account auth is unavailable in standalone ccs because it requires GUI OAuth state".to_string(),
                     ));
                 }
             }
@@ -1814,6 +1839,7 @@ impl RequestForwarder {
 
     /// 用 Copilot live `/models` 列表确认 model ID 真实可用，找不到时按 family 降级。
     /// 命中缓存后是同步的；首次请求或 5 min 缓存过期后会触发一次 HTTP。
+    #[cfg(feature = "gui")]
     async fn apply_copilot_live_model_resolution(
         &self,
         provider: &Provider,
@@ -1855,6 +1881,20 @@ impl RequestForwarder {
         }
     }
 
+    #[cfg(not(feature = "gui"))]
+    async fn apply_copilot_live_model_resolution(
+        &self,
+        _provider: &Provider,
+        _body: &mut serde_json::Value,
+    ) {
+    }
+
+    #[cfg(not(feature = "gui"))]
+    async fn is_copilot_openai_vendor_model(&self, _provider: &Provider, _model_id: &str) -> bool {
+        false
+    }
+
+    #[cfg(feature = "gui")]
     async fn is_copilot_openai_vendor_model(&self, provider: &Provider, model_id: &str) -> bool {
         let Some(app_handle) = &self.app_handle else {
             log::debug!("[Copilot] AppHandle unavailable, fallback to chat/completions");

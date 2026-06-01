@@ -151,7 +151,9 @@ impl RequestContext {
                     crate::error::AppError::AllProvidersCircuitOpen => {
                         ProxyError::AllProvidersCircuitOpen
                     }
-                    crate::error::AppError::NoProvidersConfigured => ProxyError::NoProvidersConfigured,
+                    crate::error::AppError::NoProvidersConfigured => {
+                        ProxyError::NoProvidersConfigured
+                    }
                     _ => ProxyError::DatabaseError(e.to_string()),
                 })?;
 

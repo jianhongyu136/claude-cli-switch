@@ -22,8 +22,12 @@ enum ParsedCommand {
         no_proxy: bool,
         forward: Vec<String>,
     },
-    List { app: Option<String> },
-    Status { app: Option<String> },
+    List {
+        app: Option<String>,
+    },
+    Status {
+        app: Option<String>,
+    },
     Help,
     Version,
 }
@@ -81,13 +85,17 @@ where
             if args.len() > 2 {
                 return Err("list accepts at most one app argument".to_string());
             }
-            return Ok(ParsedCommand::List { app: args.get(1).cloned() });
+            return Ok(ParsedCommand::List {
+                app: args.get(1).cloned(),
+            });
         }
         "status" => {
             if args.len() > 2 {
                 return Err("status accepts at most one app argument".to_string());
             }
-            return Ok(ParsedCommand::Status { app: args.get(1).cloned() });
+            return Ok(ParsedCommand::Status {
+                app: args.get(1).cloned(),
+            });
         }
         _ => {}
     }
@@ -194,7 +202,9 @@ fn run_tool(
     ))
 }
 
-const SUPPORTED_APPS: &[(&str, fn() -> AppType)] = &[
+type AppFactory = fn() -> AppType;
+
+const SUPPORTED_APPS: &[(&str, AppFactory)] = &[
     ("claude", || AppType::Claude),
     ("codex", || AppType::Codex),
     ("gemini", || AppType::Gemini),
@@ -243,10 +253,7 @@ fn run_list(app: Option<&str>) -> i32 {
             }
         };
 
-        let current_id = db
-            .get_current_provider(app_type.as_str())
-            .ok()
-            .flatten();
+        let current_id = db.get_current_provider(app_type.as_str()).ok().flatten();
 
         if providers.is_empty() {
             println!("[{name}] (no providers)");
@@ -310,8 +317,8 @@ mod parser_tests {
 
     #[test]
     fn parse_provider_first_launch_forwards_tool_args() {
-        let parsed = parse_args_from(["ccs", "deepseek", "claude", "-p", "hello"])
-            .expect("parse launch");
+        let parsed =
+            parse_args_from(["ccs", "deepseek", "claude", "-p", "hello"]).expect("parse launch");
 
         assert_eq!(
             parsed,
@@ -342,8 +349,8 @@ mod parser_tests {
 
     #[test]
     fn parse_no_proxy_after_tool_as_forwarded_arg() {
-        let parsed = parse_args_from(["ccs", "deepseek", "claude", "--no-proxy"])
-            .expect("parse launch");
+        let parsed =
+            parse_args_from(["ccs", "deepseek", "claude", "--no-proxy"]).expect("parse launch");
 
         assert_eq!(
             parsed,
@@ -360,11 +367,15 @@ mod parser_tests {
     fn parse_management_commands_remain_top_level() {
         assert_eq!(
             parse_args_from(["ccs", "list", "codex"]).expect("parse list"),
-            ParsedCommand::List { app: Some("codex".to_string()) }
+            ParsedCommand::List {
+                app: Some("codex".to_string())
+            }
         );
         assert_eq!(
             parse_args_from(["ccs", "status", "gemini"]).expect("parse status"),
-            ParsedCommand::Status { app: Some("gemini".to_string()) }
+            ParsedCommand::Status {
+                app: Some("gemini".to_string())
+            }
         );
     }
 }

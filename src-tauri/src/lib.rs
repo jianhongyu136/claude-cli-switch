@@ -1,50 +1,73 @@
+#![cfg_attr(not(feature = "gui"), allow(dead_code, unused_imports, unused_mut))]
+
 pub mod app_config;
+#[cfg(feature = "gui")]
 mod app_store;
+#[cfg(feature = "gui")]
 mod auto_launch;
-pub mod cli;
-mod claude_desktop_config;
+pub mod claude_desktop_config;
+#[cfg(feature = "gui")]
 mod claude_mcp;
+#[cfg(feature = "gui")]
 mod claude_plugin;
+pub mod cli;
 mod codex_config;
+#[cfg(feature = "gui")]
 mod codex_history_migration;
+#[cfg(feature = "gui")]
 mod commands;
 mod config;
 pub mod database;
+#[cfg(feature = "gui")]
 mod deeplink;
 mod error;
 mod gemini_config;
+#[cfg(feature = "gui")]
 mod gemini_mcp;
 pub mod hermes_config;
+#[cfg(feature = "gui")]
 mod init_status;
+#[cfg(feature = "gui")]
 mod lightweight;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gui", target_os = "linux"))]
 mod linux_fix;
+#[cfg(feature = "gui")]
 mod mcp;
 mod openclaw_config;
 mod opencode_config;
+#[cfg(feature = "gui")]
 mod panic_hook;
 mod prompt;
 mod prompt_files;
 pub mod provider;
+#[cfg(feature = "gui")]
 mod provider_defaults;
 mod proxy;
 mod services;
+#[cfg(feature = "gui")]
 mod session_manager;
 mod settings;
+#[cfg(feature = "gui")]
 mod store;
 
+#[cfg(feature = "gui")]
 mod tray;
 mod usage_events;
+#[cfg(feature = "gui")]
 mod usage_script;
 
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
 pub use codex_config::{get_codex_auth_path, get_codex_config_path, write_codex_live_atomic};
+#[cfg(feature = "gui")]
 pub use commands::open_provider_terminal;
+#[cfg(feature = "gui")]
 pub use commands::*;
 pub use config::{get_claude_mcp_path, get_claude_settings_path, read_json_file};
 pub use database::Database;
+#[cfg(feature = "gui")]
 pub use deeplink::{import_provider_from_deeplink, parse_deeplink_url, DeepLinkImportRequest};
 pub use error::AppError;
+#[cfg(feature = "gui")]
 pub use mcp::{
     import_from_claude, import_from_codex, import_from_gemini, remove_server_from_claude,
     remove_server_from_codex, remove_server_from_gemini, sync_enabled_to_claude,
@@ -52,24 +75,34 @@ pub use mcp::{
     sync_single_server_to_codex, sync_single_server_to_gemini,
 };
 pub use provider::{Provider, ProviderMeta};
+#[cfg(feature = "gui")]
 pub use services::{
     skill::{migrate_skills_to_ssot, ImportSkillSelection},
     ConfigService, EndpointLatency, McpService, PromptService, ProviderService, ProxyService,
     SkillService, SpeedtestService,
 };
 pub use settings::{update_settings, AppSettings};
+#[cfg(feature = "gui")]
 pub use store::AppState;
+#[cfg(feature = "gui")]
 use tauri_plugin_deep_link::DeepLinkExt;
+#[cfg(feature = "gui")]
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+#[cfg(feature = "gui")]
 use std::sync::Arc;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "gui", target_os = "macos"))]
 use tauri::image::Image;
+#[cfg(feature = "gui")]
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+#[cfg(feature = "gui")]
 use tauri::RunEvent;
+#[cfg(feature = "gui")]
 use tauri::{Emitter, Manager};
+#[cfg(feature = "gui")]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+#[cfg(feature = "gui")]
 fn redact_url_for_log(url_str: &str) -> String {
     match url::Url::parse(url_str) {
         Ok(url) => {
@@ -106,6 +139,7 @@ fn redact_url_for_log(url_str: &str) -> String {
 /// - 解析 URL
 /// - 向前端发射 `deeplink-import` / `deeplink-error` 事件
 /// - 可选：在成功时聚焦主窗口
+#[cfg(feature = "gui")]
 fn handle_deeplink_url(
     app: &tauri::AppHandle,
     url_str: &str,
@@ -140,7 +174,7 @@ fn handle_deeplink_url(
                     let _ = window.unminimize();
                     let _ = window.show();
                     let _ = window.set_focus();
-                    #[cfg(target_os = "linux")]
+                    #[cfg(all(feature = "gui", target_os = "linux"))]
                     {
                         linux_fix::nudge_main_window(window.clone());
                     }
@@ -167,6 +201,7 @@ fn handle_deeplink_url(
 }
 
 /// 更新托盘菜单的Tauri命令
+#[cfg(feature = "gui")]
 #[tauri::command]
 async fn update_tray_menu(
     app: tauri::AppHandle,
@@ -188,7 +223,7 @@ async fn update_tray_menu(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "gui", target_os = "macos"))]
 fn macos_tray_icon() -> Option<Image<'static>> {
     const ICON_BYTES: &[u8] = include_bytes!("../icons/tray/macos/statusbar_template_3x.png");
 
@@ -202,6 +237,7 @@ fn macos_tray_icon() -> Option<Image<'static>> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg(feature = "gui")]
 pub fn run() {
     // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.cc-switch/crash.log）
     panic_hook::setup_panic_hook();
@@ -241,7 +277,7 @@ pub fn run() {
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();
-                #[cfg(target_os = "linux")]
+                #[cfg(all(feature = "gui", target_os = "linux"))]
                 {
                     linux_fix::nudge_main_window(window.clone());
                 }
@@ -757,7 +793,7 @@ pub fn run() {
             // Linux 和 Windows 调试模式需要显式注册
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
-                #[cfg(target_os = "linux")]
+                #[cfg(all(feature = "gui", target_os = "linux"))]
                 {
                     // Use Tauri's path API to get correct path (includes app identifier)
                     // tauri-plugin-deep-link writes to: ~/.local/share/com.ccswitch.desktop/applications/cc-switch-handler.desktop
@@ -1047,7 +1083,7 @@ pub fn run() {
             });
 
             // Linux: 禁用 WebKitGTK 硬件加速，防止 EGL 初始化失败导致白屏
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gui", target_os = "linux"))]
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
@@ -1066,7 +1102,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 // 在窗口首次显示前同步装饰状态，避免前端加载后再切换导致标题栏闪烁
                 // 仅 Linux 生效：解决 Wayland 下系统窗口按钮不可用的问题
-                #[cfg(target_os = "linux")]
+                #[cfg(all(feature = "gui", target_os = "linux"))]
                 let _ = window.set_decorations(!settings.use_app_window_controls);
                 if settings.silent_startup {
                     // 静默启动模式：保持窗口隐藏
@@ -1084,7 +1120,7 @@ pub fn run() {
                     // Linux: 解决首次启动 UI 无响应问题（Tauri #10746 + wry #637）。
                     // 启动时 webview 未获取焦点 + surface 尺寸协商失败，导致点击无效。
                     // 这里做 set_focus + 伪 resize，等价于无视觉版本的"最大化-还原"。
-                    #[cfg(target_os = "linux")]
+                    #[cfg(all(feature = "gui", target_os = "linux"))]
                     {
                         linux_fix::nudge_main_window(window.clone());
                     }
@@ -1536,6 +1572,7 @@ pub fn run() {
 /// 在应用退出前检查代理服务器状态，如果正在运行则停止代理并恢复 Live 配置。
 /// 确保 Claude Code/Codex/Gemini 的配置不会处于损坏状态。
 /// 使用 stop_with_restore_keep_state 保留 settings 表中的代理状态，下次启动时自动恢复。
+#[cfg(feature = "gui")]
 pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
     if let Some(state) = app_handle.try_state::<store::AppState>() {
         let proxy_service = &state.proxy_service;
@@ -1581,6 +1618,7 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
 ///
 /// 检查 `proxy_config.enabled` 字段，如果有任一应用的状态为 `true`，
 /// 则自动启动代理服务并接管对应应用的 Live 配置。
+#[cfg(feature = "gui")]
 async fn restore_proxy_state_on_startup(state: &store::AppState) {
     // 收集需要恢复接管的应用列表（从 proxy_config.enabled 读取）
     let mut apps_to_restore = Vec::new();
@@ -1624,6 +1662,7 @@ async fn restore_proxy_state_on_startup(state: &store::AppState) {
     }
 }
 
+#[cfg(feature = "gui")]
 fn initialize_common_config_snippets(state: &store::AppState) {
     // Auto-extract common config snippets from clean live files when snippet is missing.
     // This must run before proxy takeover is restored on startup, otherwise we'd read
@@ -1708,6 +1747,7 @@ fn initialize_common_config_snippets(state: &store::AppState) {
 // ============================================================
 
 /// 检测是否为中文环境
+#[cfg(feature = "gui")]
 fn is_chinese_locale() -> bool {
     std::env::var("LANG")
         .or_else(|_| std::env::var("LC_ALL"))
@@ -1718,6 +1758,7 @@ fn is_chinese_locale() -> bool {
 
 /// 显示迁移错误对话框
 /// 返回 true 表示用户选择重试，false 表示用户选择退出
+#[cfg(feature = "gui")]
 fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
     let title = if is_chinese_locale() {
         "配置迁移失败"
@@ -1769,6 +1810,7 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
 
 /// 显示数据库初始化/Schema 迁移失败对话框
 /// 返回 true 表示用户选择重试，false 表示用户选择退出
+#[cfg(feature = "gui")]
 fn show_database_init_error_dialog(
     app: &tauri::AppHandle,
     db_path: &std::path::Path,
@@ -1836,12 +1878,14 @@ fn show_database_init_error_dialog(
 // 在应用主动退出前显式持久化窗口状态
 // ============================================================
 
+#[cfg(feature = "gui")]
 fn window_state_flags() -> StateFlags {
     StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED
 }
 
 /// 当前应用的退出路径会拦截 `ExitRequested` 并最终直接 `std::process::exit(0)`，
 /// 这里需要在真正结束进程前手动落盘，避免 window-state 插件的默认退出钩子被绕过。
+#[cfg(feature = "gui")]
 pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
     if let Err(err) = app_handle.save_window_state(window_state_flags()) {
         log::error!("退出前保存窗口状态失败: {err}");

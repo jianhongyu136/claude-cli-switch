@@ -4,8 +4,8 @@
   "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
   "type": "module",
   "scripts": {
-    "dev": "pnpm tauri dev",
-    "build": "pnpm tauri build",
+    "dev": "pnpm tauri dev --features gui",
+    "build": "pnpm tauri build --features gui",
     "tauri": "tauri",
     "dev:renderer": "vite",
     "build:renderer": "vite build",

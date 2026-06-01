@@ -167,7 +167,10 @@ fn build_proxy_launch_config(
         let auth_path = dir.join("auth.json");
         std::fs::write(
             &config_path,
-            build_codex_proxy_config(proxy_url, codex_provider_upstream_model(provider).as_deref()),
+            build_codex_proxy_config(
+                proxy_url,
+                codex_provider_upstream_model(provider).as_deref(),
+            ),
         )
         .map_err(|e| format!("write codex config failed: {e}"))?;
         std::fs::write(
@@ -177,9 +180,12 @@ fn build_proxy_launch_config(
         .map_err(|e| format!("write codex auth failed: {e}"))?;
         pre_args.extend([
             "--config".to_string(),
-            format!("model_provider=\"ccs-local-proxy\""),
+            "model_provider=\"ccs-local-proxy\"".to_string(),
             "--config".to_string(),
-            format!("model=\"{}\"", codex_provider_upstream_model(provider).unwrap_or_else(|| "gpt-4o".to_string())),
+            format!(
+                "model=\"{}\"",
+                codex_provider_upstream_model(provider).unwrap_or_else(|| "gpt-4o".to_string())
+            ),
         ]);
         temp_paths.push(config_path);
         temp_paths.push(auth_path);
@@ -231,13 +237,21 @@ fn build_proxy_env_vars(
         AppType::Gemini => {
             let mut vars = vec![
                 ("GOOGLE_GEMINI_BASE_URL".to_string(), proxy_url.to_string()),
-                ("GEMINI_API_KEY".to_string(), PROXY_TOKEN_PLACEHOLDER.to_string()),
+                (
+                    "GEMINI_API_KEY".to_string(),
+                    PROXY_TOKEN_PLACEHOLDER.to_string(),
+                ),
             ];
             if let Some(model) = provider
                 .settings_config
                 .pointer("/env/GEMINI_MODEL")
                 .and_then(|v| v.as_str())
-                .or_else(|| provider.settings_config.get("model").and_then(|v| v.as_str()))
+                .or_else(|| {
+                    provider
+                        .settings_config
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                })
             {
                 vars.push(("GEMINI_MODEL".to_string(), model.to_string()));
             }
@@ -531,7 +545,10 @@ mod tests {
             map.get("GOOGLE_GEMINI_BASE_URL"),
             Some(&"http://127.0.0.1:49152".to_string())
         );
-        assert_eq!(map.get("GEMINI_API_KEY"), Some(&"PROXY_MANAGED".to_string()));
+        assert_eq!(
+            map.get("GEMINI_API_KEY"),
+            Some(&"PROXY_MANAGED".to_string())
+        );
         assert_eq!(map.get("GEMINI_MODEL"), Some(&"gemini-test".to_string()));
     }
 }
