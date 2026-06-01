@@ -18,6 +18,7 @@ use super::{
     ProxyError,
 };
 use crate::database::Database;
+use crate::provider::Provider;
 use axum::{
     extract::DefaultBodyLimit,
     routing::{any, get, post},
@@ -38,6 +39,8 @@ pub struct ProxyState {
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
     /// 每个应用类型当前使用的 provider (app_type -> (provider_id, provider_name))
     pub current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+    /// CLI 临时代理指定的 provider 覆盖 (app_type -> Provider)，不修改全局 current provider
+    pub selected_provider_overrides: Arc<RwLock<std::collections::HashMap<String, Provider>>>,
     /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
     pub provider_router: Arc<ProviderRouter>,
     /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
@@ -76,6 +79,7 @@ impl ProxyServer {
             status: Arc::new(RwLock::new(ProxyStatus::default())),
             start_time: Arc::new(RwLock::new(None)),
             current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            selected_provider_overrides: Arc::new(RwLock::new(std::collections::HashMap::new())),
             provider_router,
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
@@ -112,11 +116,14 @@ impl ProxyServer {
         let listener = tokio::net::TcpListener::bind(&addr)
             .await
             .map_err(|e| ProxyError::BindFailed(e.to_string()))?;
+        let actual_addr = listener
+            .local_addr()
+            .map_err(|e| ProxyError::BindFailed(format!("读取监听地址失败: {e}")))?;
 
-        log::info!("[{}] 代理服务器启动于 {addr}", log_srv::STARTED);
+        log::info!("[{}] 代理服务器启动于 {actual_addr}", log_srv::STARTED);
 
         // 更新全局代理端口，用于系统代理检测
-        crate::proxy::http_client::set_proxy_port(self.config.listen_port);
+        crate::proxy::http_client::set_proxy_port(actual_addr.port());
 
         // 保存关闭句柄
         *self.shutdown_tx.write().await = Some(shutdown_tx);
@@ -124,8 +131,8 @@ impl ProxyServer {
         // 更新状态
         let mut status = self.state.status.write().await;
         status.running = true;
-        status.address = self.config.listen_address.clone();
-        status.port = self.config.listen_port;
+        status.address = actual_addr.ip().to_string();
+        status.port = actual_addr.port();
         drop(status);
 
         // 记录启动时间
@@ -212,8 +219,8 @@ impl ProxyServer {
         *self.server_handle.write().await = Some(handle);
 
         Ok(ProxyServerInfo {
-            address: self.config.listen_address.clone(),
-            port: self.config.listen_port,
+            address: actual_addr.ip().to_string(),
+            port: actual_addr.port(),
             started_at: chrono::Utc::now().to_rfc3339(),
         })
     }
@@ -282,6 +289,15 @@ impl ProxyServer {
             app_type.to_string(),
             (provider_id.to_string(), provider_name.to_string()),
         );
+    }
+
+    /// 设置 CLI 临时代理使用的 provider 覆盖，不写入 settings/database。
+    pub async fn set_selected_provider_override(&self, app_type: &str, provider: Provider) {
+        self.state
+            .selected_provider_overrides
+            .write()
+            .await
+            .insert(app_type.to_string(), provider);
     }
 
     fn build_router(&self) -> Router {
@@ -384,5 +400,76 @@ impl ProxyServer {
             .provider_router
             .reset_provider_breaker(provider_id, app_type)
             .await;
+    }
+}
+
+pub(crate) fn temporary_cli_proxy_server(
+    db: Arc<Database>,
+    app_handle: Option<tauri::AppHandle>,
+) -> ProxyServer {
+    let config = ProxyConfig {
+        listen_address: "127.0.0.1".to_string(),
+        listen_port: 0,
+        ..ProxyConfig::default()
+    };
+    ProxyServer::new(config, db, app_handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::Database;
+    use std::sync::Arc;
+
+    fn make_test_db() -> Arc<Database> {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        std::env::set_var(
+            "CC_SWITCH_TEST_HOME",
+            temp_dir.keep().to_string_lossy().to_string(),
+        );
+        Arc::new(Database::init().expect("init db"))
+    }
+
+    #[tokio::test]
+    async fn start_with_zero_port_returns_actual_port() {
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, make_test_db(), None);
+
+        let info = server.start().await.expect("start proxy");
+
+        assert_eq!(info.address, "127.0.0.1");
+        assert_ne!(info.port, 0, "port should be OS-assigned actual port");
+
+        server.stop().await.expect("stop proxy");
+    }
+
+    #[tokio::test]
+    async fn two_zero_port_servers_get_different_ports() {
+        let config_a = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let config_b = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server_a = ProxyServer::new(config_a, make_test_db(), None);
+        let server_b = ProxyServer::new(config_b, make_test_db(), None);
+
+        let info_a = server_a.start().await.expect("start proxy a");
+        let info_b = server_b.start().await.expect("start proxy b");
+
+        assert_ne!(info_a.port, 0);
+        assert_ne!(info_b.port, 0);
+        assert_ne!(info_a.port, info_b.port);
+
+        server_a.stop().await.expect("stop proxy a");
+        server_b.stop().await.expect("stop proxy b");
     }
 }

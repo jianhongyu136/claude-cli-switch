@@ -18,10 +18,13 @@
 
 `ccs` is a standalone command-line tool that launches Claude / Codex / Gemini / OpenCode CLI with a chosen provider's environment — **without modifying global config files**. Each invocation is fully isolated, allowing you to run multiple terminals with different providers simultaneously.
 
+Since v3.16.1, `ccs` can also automatically start a per-invocation temporary local proxy when the selected provider protocol does not match the target CLI protocol, such as launching Claude CLI with an OpenAI Chat / Responses / Gemini-native provider.
+
 ## Why ccs?
 
-- **No global config mutation** — Each invocation uses a temp settings file + process-level env vars; `~/.claude/settings.json` stays untouched
-- **Concurrent multi-provider** — Run Claude with Provider A in one terminal and Provider B in another, simultaneously
+- **No global config mutation** — Each invocation uses temp settings/config files + process-level env vars; `~/.claude/settings.json` and other global CLI configs stay untouched
+- **Automatic protocol routing** — Claude / Codex / Gemini launches can use a per-process temporary local proxy when provider protocol conversion is required
+- **Concurrent multi-provider** — Run Claude with Provider A in one terminal and Provider B in another, simultaneously; temporary proxy ports are assigned by the OS to avoid conflicts
 - **Zero extra setup** — Shares the same SQLite database as the CC Switch GUI (`~/.cc-switch/cc-switch.db`); any provider you add in the GUI is available to `ccs` immediately
 - **Lightweight** — ~3 MB standalone binary, no Tauri/WebView dependency
 
@@ -47,15 +50,23 @@ cargo build --release --bin ccs
 ## Usage
 
 ```bash
-# Launch Claude / Codex / Gemini / OpenCode
-ccs claude <provider-name-or-id>
-ccs codex <provider-name-or-id>
-ccs gemini <provider-name-or-id>
-ccs opencode <provider-name-or-id>
+# Launch Claude / Codex / Gemini / OpenCode with provider-first syntax
+ccs <provider-name-or-id> claude
+ccs <provider-name-or-id> codex
+ccs <provider-name-or-id> gemini
+ccs <provider-name-or-id> opencode
 
-# Forward args to the CLI tool
-ccs claude my-provider -- --help
-ccs claude my-provider -- -p "hello"
+# Forward args to the target CLI tool
+ccs my-provider claude -p "hello"
+ccs my-provider codex exec "fix this"
+ccs my-provider gemini -p "hello"
+
+# Disable automatic temporary proxy (ccs options must appear before the tool name)
+ccs my-provider --no-proxy claude -p "hello"
+ccs my-provider --no-proxy codex exec "fix this"
+
+# Args after the tool name belong to the target CLI
+ccs my-provider claude --no-proxy   # forwards --no-proxy to claude
 
 # List all providers
 ccs list              # all apps
@@ -63,6 +74,7 @@ ccs list claude       # claude only
 
 # Show currently active provider
 ccs status
+ccs status codex
 
 # Version and help
 ccs --version
@@ -80,15 +92,18 @@ Provider lookup matches by **id** first, then by **name** (case-insensitive). If
 | 3    | Provider not found |
 | 4    | Ambiguous provider name |
 | 5    | Provider has no env config |
+| 6    | Temporary proxy startup or child proxy config generation failed |
 | 127  | Failed to spawn target CLI (not on PATH) |
 
 ## How It Works
 
 1. Reads provider config from `~/.cc-switch/cc-switch.db` (shared with CC Switch GUI)
-2. Extracts the provider's environment variables (API Key, Base URL, etc.)
-3. For Claude: writes a temp settings file and passes it via `--settings`
-4. For Codex/Gemini: injects env vars at the process level
-5. Launches the target CLI; cleans up temp files on exit
+2. Decides whether the selected provider can be used directly by the target CLI
+3. If direct: extracts provider environment variables and launches the child process
+4. If protocol conversion is required: starts a temporary local proxy on an OS-assigned port and points only the child process at it
+5. For Claude: writes a temp settings file and passes it via `--settings`
+6. For Codex/Gemini: injects process-level env vars and temporary proxy config when needed
+7. Launches the target CLI; stops the temporary proxy and cleans up temp files on exit
 
 ## Prerequisites
 
@@ -97,10 +112,12 @@ Provider lookup matches by **id** first, then by **name** (case-insensitive). If
 
 ## Roadmap
 
-- [x] `ccs claude <provider>` — Launch Claude CLI
-- [x] `ccs codex <provider>` — Launch Codex CLI
-- [x] `ccs gemini <provider>` — Launch Gemini CLI
-- [x] `ccs opencode <provider>` — Launch OpenCode CLI
+- [x] `ccs <provider> claude` — Launch Claude CLI
+- [x] `ccs <provider> codex` — Launch Codex CLI
+- [x] `ccs <provider> gemini` — Launch Gemini CLI
+- [x] `ccs <provider> opencode` — Launch OpenCode CLI
+- [x] `ccs <provider> --no-proxy <tool>` — Force direct mode
+- [x] Temporary auto proxy for Claude / Codex / Gemini protocol conversion
 - [x] `ccs list [app]` — List all providers
 - [x] `ccs status [app]` — Show currently active provider
 - [ ] `ccs switch <app> <provider>` — Switch the active provider
@@ -116,7 +133,10 @@ cd src-tauri
 cargo build --bin ccs
 
 # Run tests
+cargo test --bin ccs parser_tests
 cargo test --lib cli::tests
+cargo test --lib cli::proxy::tests
+cargo test --lib proxy::server::tests
 
 # Release build
 cargo build --release --bin ccs

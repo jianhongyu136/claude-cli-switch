@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct ProxyConfig {
     /// 监听地址
     pub listen_address: String,
-    /// 监听端口
+    /// 监听端口；0 表示由操作系统自动分配空闲端口（CLI 临时代理使用）
     pub listen_port: u16,
     /// 最大重试次数
     pub max_retries: u8,
