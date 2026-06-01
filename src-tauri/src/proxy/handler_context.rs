@@ -102,9 +102,6 @@ impl RequestContext {
         let optimizer_config = state.db.get_optimizer_config().unwrap_or_default();
         let copilot_optimizer_config = state.db.get_copilot_optimizer_config().unwrap_or_default();
 
-        let current_provider_id =
-            crate::settings::get_current_provider(&app_type).unwrap_or_default();
-
         // 从请求体提取模型名称
         let request_model = body
             .get("model")
@@ -124,19 +121,42 @@ impl RequestContext {
             session_result.client_provided
         );
 
-        // 使用共享的 ProviderRouter 选择 Provider（熔断器状态跨请求保持）
-        // 注意：只在这里调用一次，结果传递给 forwarder，避免重复消耗 HalfOpen 名额
-        let providers = state
-            .provider_router
-            .select_providers(app_type_str)
+        // CLI 临时代理可指定 provider 覆盖；这不修改全局 current provider。
+        let override_provider = state
+            .selected_provider_overrides
+            .read()
             .await
-            .map_err(|e| match e {
-                crate::error::AppError::AllProvidersCircuitOpen => {
-                    ProxyError::AllProvidersCircuitOpen
-                }
-                crate::error::AppError::NoProvidersConfigured => ProxyError::NoProvidersConfigured,
-                _ => ProxyError::DatabaseError(e.to_string()),
-            })?;
+            .get(app_type_str)
+            .cloned();
+
+        let (providers, current_provider_id) = if let Some(provider) = override_provider {
+            log::debug!(
+                "[{}] Using CLI temporary provider override: {} ({})",
+                tag,
+                provider.name,
+                provider.id
+            );
+            (vec![provider.clone()], provider.id.clone())
+        } else {
+            let current_provider_id =
+                crate::settings::get_current_provider(&app_type).unwrap_or_default();
+
+            // 使用共享的 ProviderRouter 选择 Provider（熔断器状态跨请求保持）
+            // 注意：只在这里调用一次，结果传递给 forwarder，避免重复消耗 HalfOpen 名额
+            let providers = state
+                .provider_router
+                .select_providers(app_type_str)
+                .await
+                .map_err(|e| match e {
+                    crate::error::AppError::AllProvidersCircuitOpen => {
+                        ProxyError::AllProvidersCircuitOpen
+                    }
+                    crate::error::AppError::NoProvidersConfigured => ProxyError::NoProvidersConfigured,
+                    _ => ProxyError::DatabaseError(e.to_string()),
+                })?;
+
+            (providers, current_provider_id)
+        };
 
         let provider = providers
             .first()

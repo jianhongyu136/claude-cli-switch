@@ -3,6 +3,8 @@ use crate::database::Database;
 use crate::provider::Provider;
 use std::fmt;
 
+pub mod proxy;
+
 #[cfg(test)]
 mod tests;
 

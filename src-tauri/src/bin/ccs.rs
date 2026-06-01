@@ -1,84 +1,158 @@
 use cc_switch_lib::app_config::AppType;
-use cc_switch_lib::cli::{extract_env_vars, find_provider, write_settings_file, CliError};
+use cc_switch_lib::cli::{find_provider, CliError};
 use cc_switch_lib::database::Database;
-use clap::{Parser, Subcommand};
-use std::process::Command;
 
-#[derive(Parser)]
-#[command(name = "ccs", version, about = "cc-switch CLI: launch Claude/Codex/Gemini/OpenCode with a chosen provider")]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchTarget {
+    app_type: AppType,
+    bin_name: &'static str,
 }
 
-#[derive(Subcommand)]
-enum Commands {
-    /// Launch Claude CLI with the named provider's environment.
-    Claude {
-        /// Provider name or id (case-insensitive name match)
+impl LaunchTarget {
+    const fn new(app_type: AppType, bin_name: &'static str) -> Self {
+        Self { app_type, bin_name }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParsedCommand {
+    Launch {
         provider: String,
-        /// Extra args forwarded to the claude binary
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        target: LaunchTarget,
+        no_proxy: bool,
         forward: Vec<String>,
     },
-    /// Launch Codex CLI with the named provider's environment.
-    Codex {
-        /// Provider name or id (case-insensitive name match)
-        provider: String,
-        /// Extra args forwarded to the codex binary
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        forward: Vec<String>,
-    },
-    /// Launch Gemini CLI with the named provider's environment.
-    Gemini {
-        /// Provider name or id (case-insensitive name match)
-        provider: String,
-        /// Extra args forwarded to the gemini binary
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        forward: Vec<String>,
-    },
-    /// Launch OpenCode CLI with the named provider's environment.
-    Opencode {
-        /// Provider name or id (case-insensitive name match)
-        provider: String,
-        /// Extra args forwarded to the opencode binary
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        forward: Vec<String>,
-    },
-    /// List all providers for a given app (or all apps).
-    List {
-        /// App name: claude, codex, gemini, opencode (omit to list all)
-        app: Option<String>,
-    },
-    /// Show the currently active provider for each app.
-    Status {
-        /// App name: claude, codex, gemini, opencode (omit to show all)
-        app: Option<String>,
-    },
+    List { app: Option<String> },
+    Status { app: Option<String> },
+    Help,
+    Version,
 }
 
 fn main() {
-    let cli = Cli::parse();
-    let exit_code = match cli.command {
-        Commands::Claude { provider, forward } => {
-            run_tool(&provider, &forward, AppType::Claude, "claude")
+    let exit_code = match parse_args_from(std::env::args()) {
+        Ok(ParsedCommand::Launch {
+            provider,
+            target,
+            no_proxy,
+            forward,
+        }) => {
+            let app_type = target.app_type;
+            let no_proxy = no_proxy || app_type == AppType::OpenCode;
+            run_tool(&provider, &forward, app_type, target.bin_name, no_proxy)
         }
-        Commands::Codex { provider, forward } => {
-            run_tool(&provider, &forward, AppType::Codex, "codex")
+        Ok(ParsedCommand::List { app }) => run_list(app.as_deref()),
+        Ok(ParsedCommand::Status { app }) => run_status(app.as_deref()),
+        Ok(ParsedCommand::Help) => {
+            print_usage();
+            0
         }
-        Commands::Gemini { provider, forward } => {
-            run_tool(&provider, &forward, AppType::Gemini, "gemini")
+        Ok(ParsedCommand::Version) => {
+            println!("ccs {}", env!("CARGO_PKG_VERSION"));
+            0
         }
-        Commands::Opencode { provider, forward } => {
-            run_tool(&provider, &forward, AppType::OpenCode, "opencode")
+        Err(message) => {
+            eprintln!("ccs: {message}");
+            eprintln!();
+            print_usage();
+            2
         }
-        Commands::List { app } => run_list(app.as_deref()),
-        Commands::Status { app } => run_status(app.as_deref()),
     };
     std::process::exit(exit_code);
 }
 
-fn run_tool(query: &str, forward: &[String], app_type: AppType, bin_name: &str) -> i32 {
+fn parse_args_from<I, S>(args: I) -> Result<ParsedCommand, String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let mut args: Vec<String> = args.into_iter().map(Into::into).collect();
+    if !args.is_empty() {
+        args.remove(0);
+    }
+
+    let Some(first) = args.first().cloned() else {
+        return Ok(ParsedCommand::Help);
+    };
+
+    match first.as_str() {
+        "--help" | "-h" => return Ok(ParsedCommand::Help),
+        "--version" | "-V" => return Ok(ParsedCommand::Version),
+        "list" => {
+            if args.len() > 2 {
+                return Err("list accepts at most one app argument".to_string());
+            }
+            return Ok(ParsedCommand::List { app: args.get(1).cloned() });
+        }
+        "status" => {
+            if args.len() > 2 {
+                return Err("status accepts at most one app argument".to_string());
+            }
+            return Ok(ParsedCommand::Status { app: args.get(1).cloned() });
+        }
+        _ => {}
+    }
+
+    let provider = first;
+    let mut no_proxy = false;
+    let mut idx = 1;
+
+    while idx < args.len() {
+        if let Some(target) = parse_launch_target(&args[idx]) {
+            let forward = args[(idx + 1)..].to_vec();
+            return Ok(ParsedCommand::Launch {
+                provider,
+                target,
+                no_proxy,
+                forward,
+            });
+        }
+
+        match args[idx].as_str() {
+            "--no-proxy" => no_proxy = true,
+            other if other.starts_with('-') => {
+                return Err(format!(
+                    "unknown ccs option before tool: {other}. Put target CLI args after the tool name."
+                ));
+            }
+            other => {
+                return Err(format!(
+                    "unknown tool '{other}'. Supported tools: claude, codex, gemini, opencode"
+                ));
+            }
+        }
+        idx += 1;
+    }
+
+    Err("missing tool. Usage: ccs <provider> [--no-proxy] <claude|codex|gemini|opencode> [tool-args...]".to_string())
+}
+
+fn parse_launch_target(tool: &str) -> Option<LaunchTarget> {
+    match tool {
+        "claude" => Some(LaunchTarget::new(AppType::Claude, "claude")),
+        "codex" => Some(LaunchTarget::new(AppType::Codex, "codex")),
+        "gemini" => Some(LaunchTarget::new(AppType::Gemini, "gemini")),
+        "opencode" => Some(LaunchTarget::new(AppType::OpenCode, "opencode")),
+        _ => None,
+    }
+}
+
+fn print_usage() {
+    println!(
+        "cc-switch CLI: launch Claude/Codex/Gemini/OpenCode with a chosen provider\n\n\
+Usage:\n  ccs <provider> [ccs-options] <tool> [tool-args...]\n  ccs list [app]\n  ccs status [app]\n\n\
+Examples:\n  ccs deepseek claude -p \"hello\"\n  ccs deepseek --no-proxy claude -p \"hello\"\n  ccs kimi codex exec \"fix this\"\n  ccs google gemini -p \"hello\"\n  ccs opencode-provider opencode run\n\n\
+ccs-options (must appear before <tool>):\n  --no-proxy    Disable automatic temporary proxy\n\n\
+Tools: claude, codex, gemini, opencode\nApps: claude, codex, gemini, opencode"
+    );
+}
+
+fn run_tool(
+    query: &str,
+    forward: &[String],
+    app_type: AppType,
+    bin_name: &str,
+    no_proxy: bool,
+) -> i32 {
     let db = match Database::init() {
         Ok(d) => d,
         Err(e) => {
@@ -99,63 +173,25 @@ fn run_tool(query: &str, forward: &[String], app_type: AppType, bin_name: &str) 
         }
     };
 
-    let env_vars = extract_env_vars(&provider.settings_config, &app_type);
-    if env_vars.is_empty() {
-        eprintln!(
-            "ccs: provider '{}' has no env config — cannot launch {bin_name}",
-            provider.name
-        );
-        return 5;
-    }
-
-    let mut cmd = Command::new(bin_name);
-
-    // Claude supports --settings for isolated config file
-    let settings_path = if app_type == AppType::Claude {
-        let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join(format!(
-            "ccs_claude_{}_{}.json",
-            sanitize_filename(&provider.id),
-            std::process::id()
-        ));
-        if let Err(e) = write_settings_file(&path, &env_vars) {
-            eprintln!("ccs: {e}");
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("ccs: failed to initialize async runtime: {e}");
             return 2;
         }
-        cmd.arg("--settings").arg(&path);
-        Some(path)
-    } else {
-        None
     };
 
-    for arg in forward {
-        cmd.arg(arg);
-    }
-    for (k, v) in &env_vars {
-        cmd.env(k, v);
-    }
-
-    let status = cmd.status();
-
-    if let Some(path) = &settings_path {
-        let _ = std::fs::remove_file(path);
-    }
-
-    match status {
-        Ok(s) => s.code().unwrap_or(1),
-        Err(e) => {
-            eprintln!(
-                "ccs: failed to spawn {bin_name}: {e}. Is {bin_name} on your PATH?"
-            );
-            127
-        }
-    }
-}
-
-fn sanitize_filename(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect()
+    runtime.block_on(cc_switch_lib::cli::proxy::run_with_optional_proxy(
+        std::sync::Arc::new(db),
+        app_type,
+        provider,
+        bin_name,
+        forward,
+        no_proxy,
+    ))
 }
 
 const SUPPORTED_APPS: &[(&str, fn() -> AppType)] = &[
@@ -266,4 +302,69 @@ fn run_status(app: Option<&str>) -> i32 {
         println!("{name}: {provider_name}  ({current_id})");
     }
     0
+}
+
+#[cfg(test)]
+mod parser_tests {
+    use super::*;
+
+    #[test]
+    fn parse_provider_first_launch_forwards_tool_args() {
+        let parsed = parse_args_from(["ccs", "deepseek", "claude", "-p", "hello"])
+            .expect("parse launch");
+
+        assert_eq!(
+            parsed,
+            ParsedCommand::Launch {
+                provider: "deepseek".to_string(),
+                target: LaunchTarget::new(AppType::Claude, "claude"),
+                no_proxy: false,
+                forward: vec!["-p".to_string(), "hello".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn parse_no_proxy_before_tool_as_ccs_option() {
+        let parsed = parse_args_from(["ccs", "deepseek", "--no-proxy", "claude", "-p", "hello"])
+            .expect("parse launch");
+
+        assert_eq!(
+            parsed,
+            ParsedCommand::Launch {
+                provider: "deepseek".to_string(),
+                target: LaunchTarget::new(AppType::Claude, "claude"),
+                no_proxy: true,
+                forward: vec!["-p".to_string(), "hello".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn parse_no_proxy_after_tool_as_forwarded_arg() {
+        let parsed = parse_args_from(["ccs", "deepseek", "claude", "--no-proxy"])
+            .expect("parse launch");
+
+        assert_eq!(
+            parsed,
+            ParsedCommand::Launch {
+                provider: "deepseek".to_string(),
+                target: LaunchTarget::new(AppType::Claude, "claude"),
+                no_proxy: false,
+                forward: vec!["--no-proxy".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn parse_management_commands_remain_top_level() {
+        assert_eq!(
+            parse_args_from(["ccs", "list", "codex"]).expect("parse list"),
+            ParsedCommand::List { app: Some("codex".to_string()) }
+        );
+        assert_eq!(
+            parse_args_from(["ccs", "status", "gemini"]).expect("parse status"),
+            ParsedCommand::Status { app: Some("gemini".to_string()) }
+        );
+    }
 }
