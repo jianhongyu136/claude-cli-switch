@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use std::process::Command;
 
 #[derive(Parser)]
-#[command(name = "ccs", version, about = "cc-switch CLI: launch Claude/Codex/Gemini with a chosen provider")]
+#[command(name = "ccs", version, about = "cc-switch CLI: launch Claude/Codex/Gemini/OpenCode with a chosen provider")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -37,14 +37,22 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         forward: Vec<String>,
     },
+    /// Launch OpenCode CLI with the named provider's environment.
+    Opencode {
+        /// Provider name or id (case-insensitive name match)
+        provider: String,
+        /// Extra args forwarded to the opencode binary
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        forward: Vec<String>,
+    },
     /// List all providers for a given app (or all apps).
     List {
-        /// App name: claude, codex, gemini (omit to list all)
+        /// App name: claude, codex, gemini, opencode (omit to list all)
         app: Option<String>,
     },
     /// Show the currently active provider for each app.
     Status {
-        /// App name: claude, codex, gemini (omit to show all)
+        /// App name: claude, codex, gemini, opencode (omit to show all)
         app: Option<String>,
     },
 }
@@ -60,6 +68,9 @@ fn main() {
         }
         Commands::Gemini { provider, forward } => {
             run_tool(&provider, &forward, AppType::Gemini, "gemini")
+        }
+        Commands::Opencode { provider, forward } => {
+            run_tool(&provider, &forward, AppType::OpenCode, "opencode")
         }
         Commands::List { app } => run_list(app.as_deref()),
         Commands::Status { app } => run_status(app.as_deref()),
@@ -151,6 +162,7 @@ const SUPPORTED_APPS: &[(&str, fn() -> AppType)] = &[
     ("claude", || AppType::Claude),
     ("codex", || AppType::Codex),
     ("gemini", || AppType::Gemini),
+    ("opencode", || AppType::OpenCode),
 ];
 
 fn parse_app_filter(app: Option<&str>) -> Result<Vec<(&'static str, AppType)>, i32> {
@@ -162,7 +174,7 @@ fn parse_app_filter(app: Option<&str>) -> Result<Vec<(&'static str, AppType)>, i
                 Some((n, f)) => Ok(vec![(*n, f())]),
                 None => {
                     eprintln!(
-                        "ccs: unknown app '{}'. Supported: claude, codex, gemini",
+                        "ccs: unknown app '{}'. Supported: claude, codex, gemini, opencode",
                         name
                     );
                     Err(2)
