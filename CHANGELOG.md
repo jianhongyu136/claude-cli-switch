@@ -5,6 +5,17 @@ All notable changes to CC Switch will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.2] - 2026-06-03
+
+This patch release fixes Claude Code thinking visibility and stream ordering when `ccs` routes Claude CLI traffic through OpenAI Responses providers.
+
+### Fixed
+
+- **Claude Code thinking over OpenAI Responses**: Reasoning-capable Responses models now request `reasoning.summary: "auto"` by default, so Claude Code can receive and display model thinking even when the incoming Anthropic request does not explicitly include a thinking config.
+- **Merged Responses reasoning summaries**: Multiple OpenAI Responses reasoning summary parts from the same reasoning item are now merged into a single Claude thinking block instead of appearing as several separate thinking blocks.
+- **Early tool-call stream ordering**: Tool calls that arrive before the model's text in an OpenAI Responses stream are buffered until text has completed, preventing Claude Code agents from treating a tool-first partial stream as the end of the turn.
+- **Interleaved streaming tool arguments**: Buffered tool-call handling preserves delta arrival order across multiple tool calls, including interleaved `function_call_arguments.delta` events.
+
 ## [3.16.1] - 2026-06-01
 
 Development since v3.16.0 focuses on hardening Codex provider switching and Local Routing takeover: preserving official OAuth auth and model catalogs across normal switches, hot-switches, backup restore, and edit flows; restoring Codex Chat tool/plugin compatibility over Chat Completions upstreams; improving Codex proxy diagnostics and CLI discovery; and documenting DeepSeek routing.

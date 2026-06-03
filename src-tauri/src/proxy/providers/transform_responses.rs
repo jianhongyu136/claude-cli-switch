@@ -102,11 +102,17 @@ pub fn anthropic_to_responses(
         result["stream"] = v.clone();
     }
 
-    // Map Anthropic thinking → OpenAI Responses reasoning.effort
+    // Map Anthropic thinking → OpenAI Responses reasoning.
+    // Request a summary whenever reasoning is enabled, otherwise Responses-compatible
+    // upstreams may perform hidden reasoning without emitting any summary events for
+    // Claude Code to display as `thinking`.
     if let Some(model_name) = body.get("model").and_then(|m| m.as_str()) {
         if super::transform::supports_reasoning_effort(model_name) {
-            if let Some(effort) = super::transform::resolve_reasoning_effort(&body) {
-                result["reasoning"] = json!({ "effort": effort });
+            let thinking_disabled =
+                body.pointer("/thinking/type").and_then(|v| v.as_str()) == Some("disabled");
+            if !thinking_disabled {
+                let effort = super::transform::resolve_reasoning_effort(&body).unwrap_or("high");
+                result["reasoning"] = json!({ "effort": effort, "summary": "auto" });
             }
         }
     }
@@ -1195,6 +1201,60 @@ mod tests {
         let result = anthropic_to_responses(input, None, false, false).unwrap();
         assert_eq!(result["max_output_tokens"], 4096);
         assert!(result.get("max_completion_tokens").is_none());
+    }
+
+    #[test]
+    fn test_responses_thinking_adaptive_requests_reasoning_summary() {
+        let input = json!({
+            "model": "gpt-5.4",
+            "max_tokens": 1024,
+            "thinking": {"type": "adaptive"},
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        assert_eq!(result["reasoning"]["effort"], "xhigh");
+        assert_eq!(result["reasoning"]["summary"], "auto");
+    }
+
+    #[test]
+    fn test_responses_reasoning_model_defaults_to_summary_auto() {
+        let input = json!({
+            "model": "gpt-5.5",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        assert_eq!(result["reasoning"]["effort"], "high");
+        assert_eq!(result["reasoning"]["summary"], "auto");
+    }
+
+    #[test]
+    fn test_responses_thinking_disabled_does_not_request_reasoning_summary() {
+        let input = json!({
+            "model": "gpt-5.5",
+            "max_tokens": 1024,
+            "thinking": {"type": "disabled"},
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        assert!(result.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn test_responses_output_config_effort_requests_reasoning_summary() {
+        let input = json!({
+            "model": "gpt-5.4",
+            "max_tokens": 1024,
+            "output_config": {"effort": "high"},
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = anthropic_to_responses(input, None, false, false).unwrap();
+        assert_eq!(result["reasoning"]["effort"], "high");
+        assert_eq!(result["reasoning"]["summary"], "auto");
     }
 
     #[test]
